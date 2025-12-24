@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-GenModel is a Vision Pro (visionOS) application that generates 3D models from text descriptions or images using the Meshy.ai API. Generated models can be viewed in immersive space and exported to Files in USDZ, GLB, or OBJ formats.
+GenModel is a Vision Pro (visionOS) application that generates 3D models from text descriptions or images using the Replicate API. Generated models can be viewed in immersive space and exported to Files in USDZ, GLB, or OBJ formats.
 
 ## Build Commands
 
@@ -20,13 +20,19 @@ Note: This project requires Xcode with visionOS SDK. The RealityKitContent packa
 
 ## API Setup
 
-Set your Meshy API key in `AppModel.swift`:
+Set your Replicate API token in `AppModel.swift`:
 ```swift
-enum MeshyConfig {
-    static let apiKey = "YOUR_MESHY_API_KEY_HERE"
+enum ReplicateConfig {
+    static let apiToken = "YOUR_REPLICATE_API_TOKEN_HERE"
 }
 ```
-Get an API key from https://www.meshy.ai/
+Get an API token from https://replicate.com/account/api-tokens
+
+**Models Used:**
+- **Text-to-3D**: Shap-E (OpenAI) - generates GLB format
+- **Image-to-3D**: TripoSR - generates GLB format
+
+**Cost**: Pay-per-use, approximately $0.01-0.05 per generation (no subscription required)
 
 ## Architecture
 
@@ -41,8 +47,10 @@ Get an API key from https://www.meshy.ai/
 ```
 GenModel/
 ├── Services/
-│   ├── MeshyAPIClient.swift     # Meshy API networking (actor)
-│   └── MeshyModels.swift        # Request/response Codable types
+│   ├── ReplicateAPIClient.swift # Replicate API networking (actor)
+│   ├── ReplicateModels.swift    # Replicate request/response types
+│   ├── MeshyAPIClient.swift     # Meshy API (legacy, unused)
+│   └── MeshyModels.swift        # Shared types (ArtStyle, ExportFormat, ModelURLs)
 ├── Views/
 │   ├── GenerationView.swift     # Main generation flow orchestrator
 │   ├── TextInputView.swift      # Text prompt + art style picker
@@ -57,13 +65,13 @@ GenModel/
 ### Generation Flow
 1. User enters text prompt OR provides image URL
 2. `AppModel.startTextToGeneration()` or `startImageToGeneration()` called
-3. API client creates task, polls until complete
-4. USDZ downloaded and saved to temp directory
+3. Replicate API creates prediction, polls until complete
+4. GLB model downloaded and saved to temp directory
 5. Model displayed via `Model3D` in completed view
 6. User can view in immersive space or export
 
 ### Key Patterns
-- `MeshyAPIClient` is an `actor` for thread-safe API calls
+- `ReplicateAPIClient` is an `actor` for thread-safe API calls
 - Generation uses async polling with exponential backoff
 - `Task` cancellation supported throughout generation flow
 - `fileExporter` modifier for export to Files app
@@ -73,4 +81,4 @@ GenModel/
 - visionOS 2.0+
 - Swift 6.0 (for packages)
 - Xcode with Reality Composer Pro support
-- Meshy.ai API key (Pro plan ~$20/month)
+- Replicate API token (pay-per-use, no subscription required)

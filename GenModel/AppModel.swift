@@ -8,9 +8,9 @@
 import SwiftUI
 
 // MARK: - API Configuration
-// TODO: Replace with your Meshy API key from https://www.meshy.ai/
-enum MeshyConfig {
-    static let apiKey = "YOUR_MESHY_API_KEY_HERE"
+// Get your Replicate API token from https://replicate.com/account/api-tokens
+enum ReplicateConfig {
+    static let apiToken = "YOUR_REPLICATE_API_TOKEN_HERE"
 }
 
 /// Maintains app-wide state
@@ -72,10 +72,8 @@ class AppModel {
     // Active generation task (for cancellation)
     var activeGenerationTask: Task<Void, Never>?
 
-    // API Client
-    lazy var apiClient: MeshyAPIClient = {
-        MeshyAPIClient(apiKey: MeshyConfig.apiKey)
-    }()
+    // API Client - Using Replicate
+    let apiClient = ReplicateAPIClient(apiToken: ReplicateConfig.apiToken)
 
     // MARK: - Methods
 
@@ -95,69 +93,50 @@ class AppModel {
         guard !textPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         activeGenerationTask?.cancel()
-        generationPhase = .generatingPreview
+        generationPhase = .generatingFinal
         currentProgress = 0
 
         activeGenerationTask = Task { [weak self] in
             guard let self = self else { return }
 
             do {
-                // Step 1: Create preview task
-                let taskId = try await apiClient.createTextTo3DPreview(
-                    prompt: textPrompt,
-                    artStyle: selectedArtStyle
-                )
+                // Step 1: Create text-to-3D prediction
+                let predictionId = try await apiClient.createTextTo3D(prompt: textPrompt)
 
-                // Step 2: Poll for preview completion
-                let previewResponse = try await apiClient.pollUntilComplete(
-                    taskId: taskId,
-                    taskType: .textTo3D
+                // Step 2: Poll for completion
+                let response = try await apiClient.pollUntilComplete(
+                    predictionId: predictionId
                 ) { progress in
                     await MainActor.run {
                         self.currentProgress = progress
                     }
                 }
 
-                await MainActor.run {
-                    self.generationPhase = .previewReady(taskId: taskId)
+                // Step 3: Get output URL (GLB format from Shap-E)
+                guard let output = response.output,
+                      let outputUrl = output.stringValue ?? (output.arrayValue?.first as? String) else {
+                    throw ReplicateAPIError.noOutputURL
                 }
 
-                // Step 3: Automatically refine (for PoC, skip manual approval)
-                await MainActor.run {
-                    self.generationPhase = .generatingFinal
-                    self.currentProgress = 0
-                }
+                let modelData = try await apiClient.downloadModel(from: outputUrl)
 
-                let refineTaskId = try await apiClient.createTextTo3DRefine(previewTaskId: taskId)
-
-                // Step 4: Poll for refine completion
-                let finalResponse = try await apiClient.pollUntilComplete(
-                    taskId: refineTaskId,
-                    taskType: .textTo3D
-                ) { progress in
-                    await MainActor.run {
-                        self.currentProgress = progress
-                    }
-                }
-
-                // Step 5: Download USDZ model
-                guard let modelUrls = finalResponse.modelUrls,
-                      let usdzUrl = modelUrls.usdz else {
-                    throw MeshyAPIError.noModelURLs
-                }
-
-                let modelData = try await apiClient.downloadModel(from: usdzUrl)
-
-                // Step 6: Save to temporary file
+                // Step 4: Save to temporary file (GLB format)
                 let tempURL = FileManager.default.temporaryDirectory
                     .appendingPathComponent(UUID().uuidString)
-                    .appendingPathExtension("usdz")
+                    .appendingPathExtension("glb")
                 try modelData.write(to: tempURL)
 
                 await MainActor.run {
                     self.generatedModelData = modelData
                     self.generatedModelURL = tempURL
-                    self.modelURLs = modelUrls
+                    // Create ModelURLs with GLB
+                    self.modelURLs = ModelURLs(
+                        glb: outputUrl,
+                        fbx: nil,
+                        obj: nil,
+                        mtl: nil,
+                        usdz: nil
+                    )
                     self.generationPhase = .complete
                 }
 
@@ -182,37 +161,43 @@ class AppModel {
             guard let self = self else { return }
 
             do {
-                // Step 1: Create image-to-3D task
-                let taskId = try await apiClient.createImageTo3D(imageUrl: imageUrl)
+                // Step 1: Create image-to-3D prediction (TripoSR)
+                let predictionId = try await apiClient.createImageTo3D(imageUrl: imageUrl)
 
                 // Step 2: Poll for completion
                 let response = try await apiClient.pollUntilComplete(
-                    taskId: taskId,
-                    taskType: .imageTo3D
+                    predictionId: predictionId
                 ) { progress in
                     await MainActor.run {
                         self.currentProgress = progress
                     }
                 }
 
-                // Step 3: Download USDZ model
-                guard let modelUrls = response.modelUrls,
-                      let usdzUrl = modelUrls.usdz else {
-                    throw MeshyAPIError.noModelURLs
+                // Step 3: Get output URL (GLB format from TripoSR)
+                guard let output = response.output,
+                      let outputUrl = output.stringValue ?? (output.arrayValue?.first as? String) else {
+                    throw ReplicateAPIError.noOutputURL
                 }
 
-                let modelData = try await apiClient.downloadModel(from: usdzUrl)
+                let modelData = try await apiClient.downloadModel(from: outputUrl)
 
-                // Step 4: Save to temporary file
+                // Step 4: Save to temporary file (GLB format)
                 let tempURL = FileManager.default.temporaryDirectory
                     .appendingPathComponent(UUID().uuidString)
-                    .appendingPathExtension("usdz")
+                    .appendingPathExtension("glb")
                 try modelData.write(to: tempURL)
 
                 await MainActor.run {
                     self.generatedModelData = modelData
                     self.generatedModelURL = tempURL
-                    self.modelURLs = modelUrls
+                    // Create ModelURLs with GLB
+                    self.modelURLs = ModelURLs(
+                        glb: outputUrl,
+                        fbx: nil,
+                        obj: nil,
+                        mtl: nil,
+                        usdz: nil
+                    )
                     self.generationPhase = .complete
                 }
 
