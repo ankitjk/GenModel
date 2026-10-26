@@ -58,25 +58,34 @@ Packages/RealityKitContent/         # Reality Composer Pro package
 
 ## Running it
 
-**Requirements:** Xcode 16.4+ with the visionOS 2.5 SDK, an Apple Vision Pro or the simulator, and a Replicate API token.
+**Requirements:** macOS with Xcode 16.4+ and the visionOS 2.5 SDK (install it from Xcode → Settings → Components if you don't have it), an Apple Vision Pro simulator or device, and a Replicate API token.
 
-1. Clone the repo and open `GenModel.xcodeproj`. Xcode resolves the one package dependency ([GLTFKit2](https://github.com/warrenm/GLTFKit2)) automatically.
-2. Add your token. Copy the example file and paste a token from <https://replicate.com/account/api-tokens>:
+1. Clone the repo and open `GenModel.xcodeproj`. Xcode resolves the one package dependency ([GLTFKit2](https://github.com/warrenm/GLTFKit2)) automatically on first open.
+2. Add your token **before building**. Copy the example file and paste a token from <https://replicate.com/account/api-tokens>:
    ```bash
    cp Secrets.example.plist GenModel/Secrets.plist
    ```
-   `GenModel/Secrets.plist` is git-ignored. Without it the app builds and runs, and generation fails with a clear "no token configured" error.
-3. Build and run on the Apple Vision Pro simulator, or from the command line:
-   ```bash
-   xcodebuild -project GenModel.xcodeproj -scheme GenModel \
-     -destination 'platform=visionOS Simulator,name=Apple Vision Pro' build
-   ```
+   The project uses Xcode's synchronized folders, so the new file is picked up without adding it to the project. `GenModel/Secrets.plist` is git-ignored. Without it the app still builds and runs, and generation fails with a clear "no token configured" error.
+3. In Xcode, pick the **Apple Vision Pro** simulator as the run destination and press **⌘R**.
+   - To run on a physical Vision Pro instead, select the GenModel target → Signing & Capabilities and switch the team to your own.
+   - To only compile from the command line (no launch):
+     ```bash
+     xcodebuild -project GenModel.xcodeproj -scheme GenModel \
+       -destination 'generic/platform=visionOS Simulator' build
+     ```
 
-**Tests:**
+**Tests:** ⌘U in Xcode, or:
 ```bash
 xcodebuild test -project GenModel.xcodeproj -scheme GenModel \
   -destination 'platform=visionOS Simulator,name=Apple Vision Pro'
 ```
+If `xcodebuild` can't find the device, your simulator carries an OS suffix in its name; use e.g. `name=Apple Vision Pro 2.5` (list them with `xcrun simctl list devices`).
+
+## Using it
+
+1. **Text** tab: type a description, pick an art style, tap **Generate 3D Model**. **Image** tab: choose **Photo Library** to pick a photo, or **Image URL** to paste a public link, then tap **Generate 3D Model**.
+2. Wait for the progress ring (typically 30–90 s; Replicate cold starts add time on the first run).
+3. Rotate the preview in the window, tap **Show Immersive Space** to place it in front of you at scale, or **Export** to save the GLB to the app's folder in Files.
 
 ## Status and known limitations
 
