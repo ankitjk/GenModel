@@ -101,6 +101,7 @@ struct AnyCodable: Codable {
 // MARK: - Replicate API Errors
 
 enum ReplicateAPIError: LocalizedError {
+    case missingAPIToken
     case invalidAPIToken
     case predictionFailed(message: String)
     case invalidResponse
@@ -112,6 +113,8 @@ enum ReplicateAPIError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        case .missingAPIToken:
+            return "No Replicate API token configured. Add it to GenModel/Secrets.plist (see Secrets.example.plist)."
         case .invalidAPIToken:
             return "Invalid API token. Please check your Replicate API token."
         case .predictionFailed(let message):

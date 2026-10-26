@@ -6,59 +6,141 @@
 //
 
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct ExportView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.dismiss) private var dismiss
 
-    @State private var selectedFormat: ExportFormat = .usdz
-    @State private var isExporting = false
     @State private var exportError: String?
     @State private var showError = false
-    @State private var exportData: Data?
-    @State private var showFileExporter = false
+    @State private var exportSuccess = false
+
+    private var modelFormat: String {
+        appModel.generatedModelURL?.pathExtension.uppercased() ?? "Unknown"
+    }
+
+    private var formatDescription: String {
+        switch appModel.generatedModelURL?.pathExtension.lowercased() {
+        case "glb", "gltf":
+            return "GLB (Universal)"
+        case "obj":
+            return "OBJ (Wavefront)"
+        case "ply":
+            return "PLY (Point Cloud)"
+        case "usdz":
+            return "USDZ (Apple)"
+        default:
+            return "3D Model"
+        }
+    }
+
+    private var formatSubtitle: String {
+        switch appModel.generatedModelURL?.pathExtension.lowercased() {
+        case "glb", "gltf":
+            return "Compatible with most 3D viewers and editors"
+        case "obj":
+            return "Compatible with most 3D software"
+        case "ply":
+            return "Point cloud format, limited viewer support"
+        case "usdz":
+            return "Optimized for Apple devices"
+        default:
+            return "3D model file"
+        }
+    }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 24) {
-                Text("Export 3D Model")
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                if exportSuccess {
+                    // Success state
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 60))
+                        .foregroundStyle(.green)
 
-                Text("Choose a format to export your generated model")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    Text("Model Saved!")
+                        .font(.title2)
+                        .fontWeight(.semibold)
 
-                VStack(alignment: .leading, spacing: 16) {
-                    ForEach(ExportFormat.allCases) { format in
-                        ExportFormatRow(
-                            format: format,
-                            isSelected: selectedFormat == format
-                        ) {
-                            selectedFormat = format
-                        }
+                    Text("Your \(modelFormat) model has been saved to the app's Documents folder.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("File: model.\(modelFormat.lowercased())")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Text("You can access it via Files app > On My Device > GenModel")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                }
-                .padding()
-                .background(Color.secondary.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.secondary.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
 
-                Spacer()
+                    Spacer()
 
-                if isExporting {
-                    ProgressView("Preparing export...")
-                } else {
                     Button {
-                        prepareExport()
+                        dismiss()
                     } label: {
-                        Label("Export to Files", systemImage: "square.and.arrow.up")
+                        Text("Done")
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                             .padding()
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(appModel.modelURLs == nil)
+
+                } else {
+                    // Export options state
+                    Text("Export 3D Model")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+
+                    Text("Your model will be exported in \(modelFormat) format")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "cube.fill")
+                                .font(.title2)
+                                .foregroundStyle(.blue)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(formatDescription)
+                                    .font(.headline)
+
+                                Text(formatSubtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.blue)
+                                .font(.title2)
+                        }
+                    }
+                    .padding()
+                    .background(Color.secondary.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                    Spacer()
+
+                    Button {
+                        saveToDocuments()
+                    } label: {
+                        Label("Save to Documents", systemImage: "folder.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(appModel.generatedModelData == nil)
                 }
             }
             .padding()
@@ -75,139 +157,34 @@ struct ExportView: View {
             } message: {
                 Text(exportError ?? "Unknown error")
             }
-            .fileExporter(
-                isPresented: $showFileExporter,
-                document: ExportDocument(data: exportData ?? Data()),
-                contentType: utType(for: selectedFormat),
-                defaultFilename: "model.\(selectedFormat.fileExtension)"
-            ) { result in
-                switch result {
-                case .success(let url):
-                    print("Exported to: \(url)")
-                    dismiss()
-                case .failure(let error):
-                    exportError = error.localizedDescription
-                    showError = true
-                }
-            }
         }
     }
 
-    private func prepareExport() {
-        guard let modelURLs = appModel.modelURLs else {
-            exportError = "No model URLs available"
+    private func saveToDocuments() {
+        guard let modelData = appModel.generatedModelData else {
+            exportError = "No model data available"
             showError = true
             return
         }
 
-        let urlString: String?
-        switch selectedFormat {
-        case .usdz:
-            urlString = modelURLs.usdz
-        case .glb:
-            urlString = modelURLs.glb
-        case .obj:
-            urlString = modelURLs.obj
-        }
+        print("Saving export with \(modelData.count) bytes")
 
-        guard let urlString = urlString else {
-            exportError = "This format is not available for this model"
+        let ext = appModel.generatedModelURL?.pathExtension.lowercased() ?? "glb"
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let fileURL = documentsURL.appendingPathComponent("model").appendingPathExtension(ext)
+
+        do {
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                try FileManager.default.removeItem(at: fileURL)
+            }
+            try modelData.write(to: fileURL)
+            print("Saved file to: \(fileURL.path)")
+            exportSuccess = true
+        } catch {
+            print("Failed to save file: \(error)")
+            exportError = "Failed to save file: \(error.localizedDescription)"
             showError = true
-            return
         }
-
-        isExporting = true
-
-        Task {
-            do {
-                let data = try await appModel.apiClient.downloadModel(from: urlString)
-                await MainActor.run {
-                    exportData = data
-                    isExporting = false
-                    showFileExporter = true
-                }
-            } catch {
-                await MainActor.run {
-                    exportError = error.localizedDescription
-                    isExporting = false
-                    showError = true
-                }
-            }
-        }
-    }
-
-    private func utType(for format: ExportFormat) -> UTType {
-        switch format {
-        case .usdz:
-            return .usdz
-        case .glb:
-            return UTType(filenameExtension: "glb") ?? .data
-        case .obj:
-            return UTType(filenameExtension: "obj") ?? .plainText
-        }
-    }
-}
-
-struct ExportFormatRow: View {
-    let format: ExportFormat
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(format.displayName)
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-
-                    Text(formatDescription)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.blue)
-                        .font(.title2)
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var formatDescription: String {
-        switch format {
-        case .usdz:
-            return "Best for Apple devices (visionOS, iOS, macOS)"
-        case .glb:
-            return "Universal format for web and cross-platform"
-        case .obj:
-            return "Compatible with 3D modeling software"
-        }
-    }
-}
-
-// MARK: - Export Document
-
-struct ExportDocument: FileDocument {
-    static var readableContentTypes: [UTType] = [.usdz, .data]
-
-    var data: Data
-
-    init(data: Data) {
-        self.data = data
-    }
-
-    init(configuration: ReadConfiguration) throws {
-        data = configuration.file.regularFileContents ?? Data()
-    }
-
-    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        FileWrapper(regularFileWithContents: data)
     }
 }
 

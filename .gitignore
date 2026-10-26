@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+.swiftpm/
+build/
+
+# Local tool settings
+.claude/settings.local.json
+
+# Secrets (copy Secrets.example.plist to GenModel/Secrets.plist and fill in your token)
+GenModel/Secrets.plist
+
+# Locally generated test meshes
+Output/

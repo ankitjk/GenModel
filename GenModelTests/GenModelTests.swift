@@ -268,7 +268,8 @@ struct AppModelTests {
         appModel.textPrompt = "A red sports car"
         appModel.startTextToGeneration()
 
-        #expect(appModel.generationPhase == .generatingPreview)
+        // Replicate API goes directly to generatingFinal (no preview step)
+        #expect(appModel.generationPhase == .generatingFinal)
         #expect(appModel.currentProgress == 0)
         #expect(appModel.activeGenerationTask != nil)
 
